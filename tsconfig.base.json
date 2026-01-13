@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    /* Language & Environment */
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+
+    /* Strictness */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    /* Type Safety */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Module Interop */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* Build */
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    /* Paths (선택) */
+    "baseUrl": "."
+  }
+}
