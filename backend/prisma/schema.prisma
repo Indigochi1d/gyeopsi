@@ -1,14 +1,199 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
+}
+
+// ============================================
+// User - 로그인 유저
+// ============================================
+model User {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  studentId String   @unique @db.VarChar(20) // 세종대 학번
+  name      String   @db.VarChar(50) // 이름
+  sejongPid String?  @db.VarChar(50) // 세종대 내부 ID (ipid)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  initMeetings Meeting[]     @relation("InitUser")
+  participants Participant[]
+
+  @@index([studentId])
+  @@map("users")
+}
+
+// ============================================
+// Meeting - 미팅
+// ============================================
+model Meeting {
+  id          String        @id @default(uuid()) @db.VarChar(36)
+  inviteCode  String        @unique @db.VarChar(20) // 초대 코드
+  title       String        @db.VarChar(100) // 미팅 이름
+  description String?       @db.VarChar(500) // 설명 (optional)
+  initUserId  String        @db.VarChar(36) // 생성자 ID
+  deadlineAt  DateTime // 마감 시간
+  status      MeetingStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  initUser     User          @relation("InitUser", fields: [initUserId], references: [id])
+  dates        MeetingDate[]
+  participants Participant[]
+  reservation  Reservation?
+
+  @@index([initUserId])
+  @@index([status])
+  @@index([deadlineAt])
+  @@index([inviteCode])
+  @@map("meetings")
+}
+
+enum MeetingStatus {
+  PENDING // 시간 조율 중
+  COMPLETED // 예약 완료
+  FAILED // 예약 실패
+  CANCELLED // 취소됨
+}
+
+// ============================================
+// MeetingDate - 미팅 후보 날짜
+// ============================================
+model MeetingDate {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  meetingId String   @db.VarChar(36)
+  date      DateTime @db.Date // 후보 날짜
+
+  // Relations
+  meeting        Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  timeSelections TimeSelection[]
+
+  @@unique([meetingId, date])
+  @@index([meetingId])
+  @@map("meeting_dates")
+}
+
+// ============================================
+// Participant - 미팅 참가자
+// ============================================
+model Participant {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  meetingId  String   @db.VarChar(36)
+  userId     String?  @db.VarChar(36) // 로그인 유저인 경우
+  studentId  String   @db.VarChar(20) // 학번
+  name       String   @db.VarChar(50) // 이름
+  sejongPid  String?  @db.VarChar(50) // 세종대 내부 ID
+  isLoggedIn Boolean  @default(false) // 로그인 여부
+  createdAt  DateTime @default(now())
+
+  // Relations
+  meeting          Meeting           @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user             User?             @relation(fields: [userId], references: [id])
+  timeSelections   TimeSelection[]
+  reservationUsers ReservationUser[]
+
+  @@unique([meetingId, studentId])
+  @@index([meetingId])
+  @@index([userId])
+  @@map("participants")
+}
+
+// ============================================
+// TimeSelection - 참가자별 선택 시간
+// ============================================
+model TimeSelection {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  participantId String   @db.VarChar(36)
+  meetingDateId String   @db.VarChar(36)
+  hour          Int      @db.TinyInt // 시간 (10, 11, 12, ...)
+  createdAt     DateTime @default(now())
+
+  // Relations
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  meetingDate MeetingDate @relation(fields: [meetingDateId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, meetingDateId, hour])
+  @@index([participantId])
+  @@index([meetingDateId])
+  @@map("time_selections")
+}
+
+// ============================================
+// Studyroom - 스터디룸 정보
+// ============================================
+model Studyroom {
+  id             Int      @id // 세종대 room_id
+  name           String   @db.VarChar(100) // 스터디룸 이름
+  location       String   @db.VarChar(200) // 위치
+  minUsers       Int      @db.TinyInt // 최소 인원
+  maxUsers       Int      @db.TinyInt // 최대 인원
+  operatingStart Int      @default(10) @db.TinyInt // 운영 시작 시간
+  operatingEnd   Int      @default(22) @db.TinyInt // 운영 종료 시간
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  reservations Reservation[]
+
+  @@map("studyrooms")
+}
+
+// ============================================
+// Reservation - 예약 정보
+// ============================================
+model Reservation {
+  id              String            @id @default(uuid()) @db.VarChar(36)
+  meetingId       String            @unique @db.VarChar(36)
+  studyroomId     Int
+  date            DateTime          @db.Date
+  startHour       Int               @db.TinyInt // 시작 시간 (10, 11, ...)
+  duration        Int               @db.TinyInt // 예약 시간 (1 or 2)
+  sejongBookingId String?           @db.VarChar(50) // 세종대 예약 ID
+  status          ReservationStatus @default(PENDING)
+  failReason      String?           @db.VarChar(500) // 실패 사유
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  meeting   Meeting           @relation(fields: [meetingId], references: [id])
+  studyroom Studyroom         @relation(fields: [studyroomId], references: [id])
+  users     ReservationUser[]
+
+  @@index([status])
+  @@index([date])
+  @@index([meetingId])
+  @@map("reservations")
+}
+
+enum ReservationStatus {
+  PENDING // 예약 대기
+  SUCCESS // 예약 성공
+  FAILED // 예약 실패
+}
+
+// ============================================
+// ReservationUser - 예약 참가자
+// ============================================
+model ReservationUser {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  reservationId String   @db.VarChar(36)
+  participantId String   @db.VarChar(36)
+  isLeader      Boolean  @default(false) // 예약 대표자 여부
+  createdAt     DateTime @default(now())
+
+  // Relations
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@unique([reservationId, participantId])
+  @@index([reservationId])
+  @@index([participantId])
+  @@map("reservation_users")
 }
